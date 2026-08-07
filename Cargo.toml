@@ -1,6 +1,6 @@
 [package]
 name = "guise-profiles"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 rust-version = "1.75"
 license = "MIT OR Apache-2.0"
@@ -8,8 +8,16 @@ authors = ["Santh Project <contact@santh.dev>"]
 repository = "https://github.com/santhreal/guise-profiles"
 homepage = "https://santh.dev"
 description = "Pure browser fingerprint profile identifiers and user-agent constants for Santh stealth stacks"
+documentation = "https://docs.rs/guise-profiles"
+readme = "README.md"
 keywords = ["stealth", "fingerprint", "browser", "user-agent"]
 categories = ["web-programming"]
 
+[package.metadata.santh]
+status = "beta"
+
 [lints.rust]
 unsafe_code = "forbid"
+
+[dev-dependencies]
+proptest = { version = "1.9.0" }

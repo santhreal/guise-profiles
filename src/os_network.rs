@@ -69,22 +69,29 @@ pub struct OsNetworkStack {
 }
 
 impl OsNetworkStack {
+    /// Render the TCP advertised-window field shared by [`Self::p0f_signature`]
+    /// and [`Self::ja4t`]: `*` for the kernel-autotuned ([`TcpWindow::MssScaled`])
+    /// case, deliberately NOT inventing an `mss*N` multiple we cannot assert,
+    /// and the literal value when the OS sends a fixed window. Single owner of
+    /// the `*`/fixed convention so the two signatures cannot drift.
+    fn window_field(&self) -> String {
+        match self.tcp_window {
+            TcpWindow::MssScaled => "*".to_string(),
+            TcpWindow::Fixed(value) => value.to_string(),
+        }
+    }
+
     /// Render the persona's expected SYN signature in a faithful p0f-style form:
     /// `ittl:mss:window,wscale:olayout:quirks`.
     ///
     /// This is the operator-facing string a p0f-class self-probe (G021) compares
     /// the egress against. It consumes every field of the stack. The advertised
-    /// window is rendered as `*` for the autotuned ([`TcpWindow::MssScaled`])
-    /// case, deliberately NOT inventing an `mss*N` multiple we cannot assert 
-    /// and as its literal value when the OS sends a fixed window.
+    /// window follows the [`Self::window_field`] convention.
     ///
     /// Example (Linux): `64:1460:*,7:mss,sok,ts,nop,ws:df`.
     #[must_use]
     pub fn p0f_signature(&self) -> String {
-        let window = match self.tcp_window {
-            TcpWindow::MssScaled => "*".to_string(),
-            TcpWindow::Fixed(value) => value.to_string(),
-        };
+        let window = self.window_field();
         let quirks = if self.df { "df" } else { "" };
         format!(
             "{}:{}:{},{}:{}:{}",
@@ -126,10 +133,7 @@ impl OsNetworkStack {
     /// than silently dropped (Law 10), so a malformed or future-extended layout
     /// can never yield a quietly-wrong JA4T.
     pub fn ja4t(&self) -> Result<String, Ja4tError> {
-        let window = match self.tcp_window {
-            TcpWindow::MssScaled => "*".to_string(),
-            TcpWindow::Fixed(value) => value.to_string(),
-        };
+        let window = self.window_field();
         let mut kinds = Vec::new();
         for option in self.tcp_options_layout.split(',') {
             match tcp_option_kind(option) {
@@ -331,6 +335,7 @@ pub const fn os_network_stack(platform: UserAgentPlatform) -> Option<OsNetworkSt
 /// mis-modeled persona instead, and is caught at compile time for any
 /// const-evaluated call site.
 #[must_use]
+#[allow(clippy::panic)]
 pub const fn profile_os_network_stack(profile: StealthProfile) -> OsNetworkStack {
     match os_network_stack(profile_platform(profile)) {
         Some(stack) => stack,

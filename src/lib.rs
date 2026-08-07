@@ -12,8 +12,26 @@
 //! catalog type, re-exported unchanged by `scanclient` and `stealth`.
 
 #![forbid(unsafe_code)]
-#![deny(unreachable_patterns)]
 #![warn(missing_docs)]
+#![warn(clippy::pedantic)]
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::panic
+    )
+)]
+#![allow(
+    clippy::module_name_repetitions,
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::too_many_lines,
+    clippy::match_same_arms,
+    clippy::doc_markdown,
+)]
 
 mod os_network;
 pub use os_network::{
@@ -1001,6 +1019,12 @@ const SAMSUNG_INTERNET_HARDWARE: &[ProfileHardware] = &[ProfileHardware {
 }];
 
 /// Hardware/display tuples coherent with a browser fingerprint profile.
+///
+/// Every table is compile-time guaranteed non-empty (the assertions below),
+/// so [`profile_hardware`] and [`profile_hardware_at`] can never panic on an
+/// empty table: an empty table is a compile error, not a latent runtime
+/// panic. This matches the crate's fail-closed-at-compile-time discipline
+/// (`profile_os_network_stack` panics in const for an unknown platform).
 #[must_use]
 pub const fn profile_hardware_variants(profile: StealthProfile) -> &'static [ProfileHardware] {
     match profile {
@@ -1035,6 +1059,19 @@ pub const fn profile_hardware_at(profile: StealthProfile, index: usize) -> Profi
     let variants = profile_hardware_variants(profile);
     variants[index % variants.len()]
 }
+
+// Compile-time non-emptiness guarantee for every per-profile hardware table
+// (BACKLOG robustness/panic row): `profile_hardware` indexes `[0]` and
+// `profile_hardware_at` reduces modulo `len`, so an empty table would be a
+// latent index-out-of-bounds or divide-by-zero panic with no compile-time
+// signal. Any new `StealthProfile` variant must add its table here.
+const _: () = {
+    let mut i = 0;
+    while i < ALL_PROFILES.len() {
+        assert!(!profile_hardware_variants(ALL_PROFILES[i]).is_empty());
+        i += 1;
+    }
+};
 
 /// One low-entropy User-Agent Client Hint brand entry for a browser profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1914,6 +1951,29 @@ mod tests {
                 _ => DEFAULT_ACCEPT_ENCODING,
             };
             assert_eq!(profile_facts(*profile).accept_encoding, expected_encoding);
+        }
+    }
+
+    /// Proving test for the BACKLOG robustness/panic row: every
+    /// `StealthProfile` variant has a non-empty hardware table, so
+    /// `profile_hardware` (`[0]`) and `profile_hardware_at` (`% len`) succeed
+    /// for the whole catalogue. The compile-time `const _` assertions beside
+    /// the tables make an empty table a build error; this test proves the
+    /// runtime accessors agree over every variant.
+    #[test]
+    fn every_profile_has_usable_hardware_accessors() {
+        for profile in ALL_PROFILES {
+            assert!(
+                !profile_hardware_variants(*profile).is_empty(),
+                "{profile:?} has an empty hardware table"
+            );
+            let default = profile_hardware(*profile);
+            let first = profile_hardware_at(*profile, 0);
+            assert_eq!(default, first, "{profile:?} index 0 must equal default");
+            // One full turn of the modulo wheel returns to the default.
+            let len = profile_hardware_variants(*profile).len();
+            let wrapped = profile_hardware_at(*profile, len);
+            assert_eq!(wrapped, default, "{profile:?} modulo wrap must equal default");
         }
     }
 

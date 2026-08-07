@@ -431,3 +431,36 @@ fn ja4t_matches_observed_fails_closed_on_malformed_observation() {
     assert!(!linux.ja4t_matches_observed("64240_2-4-8-1-3_1460")); // 3 fields
     assert!(!linux.ja4t_matches_observed("not a ja4t at all"));
 }
+
+/// Locks the BACKLOG one-place fix: `p0f_signature` and `ja4t` must render the
+/// SAME window token for the same stack, because both delegate to the single
+/// `window_field` owner. A drift between them would give the p0f self-probe
+/// and the JA4T wire comparison different expectations for one SYN.
+#[test]
+fn p0f_and_ja4t_render_the_same_window_token() {
+    for profile in ALL_PROFILES {
+        let stack = profile_os_network_stack(*profile);
+        let expected_window = match stack.tcp_window {
+            TcpWindow::MssScaled => "*".to_string(),
+            TcpWindow::Fixed(value) => value.to_string(),
+        };
+        let p0f_window = stack
+            .p0f_signature()
+            .split(':')
+            .nth(2)
+            .expect("p0f signature has a window field")
+            .split(',')
+            .next()
+            .expect("p0f window field")
+            .to_string();
+        let ja4t_window = stack
+            .ja4t()
+            .expect("catalogue stacks render JA4T")
+            .split('_')
+            .next()
+            .expect("ja4t has a window field")
+            .to_string();
+        assert_eq!(p0f_window, expected_window, "{profile:?} p0f window");
+        assert_eq!(ja4t_window, expected_window, "{profile:?} ja4t window");
+    }
+}
