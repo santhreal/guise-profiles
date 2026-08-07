@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [0.1.3] - 2026-08-07
+
+### Fixed
+- Fixed silent fallbacks in User-Agent profile inference where unsupported browser/platform combinations (e.g. Firefox on iOS/Android, Safari on Windows/Linux, Edge/Opera on macOS) quietly returned mismatched desktop profiles instead of `None`.
+- Fixed iOS platform detection to include `iPod`, `iPhone OS`, and `CPU OS` tokens, preventing iPod Touch UAs from misclassifying as macOS.
+- Added Firefox on iOS (`FxiOS/`) token and version parsing support in `user_agent_facts`.
+- Updated version parsing delimiter in `major_after` to support underscore-separated version strings.
+
+### Changed
+- Updated package author to `Santh <64453045+santhreal@users.noreply.github.com>`.
 ## [0.1.2] - 2026-08-07
 
 ### Added

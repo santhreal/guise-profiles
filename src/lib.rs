@@ -382,7 +382,9 @@ pub fn user_agent_facts(user_agent: &str) -> UserAgentFacts {
     let browser_major_version = match browser {
         UserAgentBrowser::Chrome => chromium_major_version,
         UserAgentBrowser::Edge => major_after(user_agent, "Edg/"),
-        UserAgentBrowser::Firefox => major_after(user_agent, "Firefox/"),
+        UserAgentBrowser::Firefox => {
+            major_after(user_agent, "Firefox/").or_else(|| major_after(user_agent, "FxiOS/"))
+        }
         UserAgentBrowser::Safari => major_after(user_agent, "Version/"),
         UserAgentBrowser::InternetExplorer => {
             major_after(user_agent, "MSIE ").or_else(|| major_after(user_agent, "rv:"))
@@ -423,7 +425,7 @@ fn user_agent_browser(user_agent: &str) -> UserAgentBrowser {
         UserAgentBrowser::SamsungInternet
     } else if user_agent.contains("OPR/") {
         UserAgentBrowser::Opera
-    } else if user_agent.contains("Firefox/") {
+    } else if user_agent.contains("Firefox/") || user_agent.contains("FxiOS/") {
         UserAgentBrowser::Firefox
     } else if user_agent.contains("HeadlessChrome/")
         || user_agent.contains("HeadlessChromium/")
@@ -441,7 +443,12 @@ fn user_agent_browser(user_agent: &str) -> UserAgentBrowser {
 fn user_agent_platform(user_agent: &str) -> UserAgentPlatform {
     if user_agent.contains("Android") {
         UserAgentPlatform::Android
-    } else if user_agent.contains("iPhone") || user_agent.contains("iPad") {
+    } else if user_agent.contains("iPhone")
+        || user_agent.contains("iPad")
+        || user_agent.contains("iPod")
+        || user_agent.contains("iPhone OS")
+        || user_agent.contains("CPU OS")
+    {
         UserAgentPlatform::Ios
     } else if user_agent.contains("Macintosh") || user_agent.contains("Mac OS X") {
         UserAgentPlatform::MacOs
@@ -461,24 +468,49 @@ fn profile_from_user_agent_facts(
     browser_major_version: Option<u32>,
 ) -> Option<StealthProfile> {
     match browser {
-        UserAgentBrowser::InternetExplorer => Some(StealthProfile::Ie11Windows),
-        UserAgentBrowser::Edge => Some(StealthProfile::EdgeWindowsStable),
+        UserAgentBrowser::InternetExplorer => match platform {
+            UserAgentPlatform::Windows | UserAgentPlatform::Unknown => {
+                Some(StealthProfile::Ie11Windows)
+            }
+            _ => None,
+        },
+        UserAgentBrowser::Edge => match platform {
+            UserAgentPlatform::Windows | UserAgentPlatform::Unknown => {
+                Some(StealthProfile::EdgeWindowsStable)
+            }
+            _ => None,
+        },
         UserAgentBrowser::Firefox => match platform {
             UserAgentPlatform::Windows => Some(StealthProfile::FirefoxWindows),
             UserAgentPlatform::MacOs => Some(StealthProfile::FirefoxMacStable),
-            _ => Some(StealthProfile::FirefoxLinux),
+            UserAgentPlatform::Linux => Some(StealthProfile::FirefoxLinux),
+            UserAgentPlatform::Android | UserAgentPlatform::Ios | UserAgentPlatform::Unknown => {
+                None
+            }
         },
         UserAgentBrowser::Safari => {
-            if user_agent.contains("iPhone") {
+            if user_agent.contains("iPhone") || user_agent.contains("iPod") {
                 Some(StealthProfile::SafariIphone)
             } else if user_agent.contains("iPad") {
                 Some(StealthProfile::SafariIpad)
-            } else {
+            } else if platform == UserAgentPlatform::MacOs {
                 Some(StealthProfile::SafariMacStable)
+            } else {
+                None
             }
         }
-        UserAgentBrowser::SamsungInternet => Some(StealthProfile::SamsungInternetAndroid),
-        UserAgentBrowser::Opera => Some(StealthProfile::OperaWindows),
+        UserAgentBrowser::SamsungInternet => match platform {
+            UserAgentPlatform::Android | UserAgentPlatform::Unknown => {
+                Some(StealthProfile::SamsungInternetAndroid)
+            }
+            _ => None,
+        },
+        UserAgentBrowser::Opera => match platform {
+            UserAgentPlatform::Windows | UserAgentPlatform::Unknown => {
+                Some(StealthProfile::OperaWindows)
+            }
+            _ => None,
+        },
         UserAgentBrowser::Chrome => match platform {
             UserAgentPlatform::Android => Some(StealthProfile::ChromeAndroid),
             UserAgentPlatform::MacOs => Some(StealthProfile::ChromeMacStable),
@@ -504,7 +536,7 @@ fn first_major_after(user_agent: &str, tokens: &[&str]) -> Option<u32> {
 
 fn major_after(user_agent: &str, token: &str) -> Option<u32> {
     let rest = user_agent.split_once(token)?.1;
-    let end = rest.find(['.', ' ', ';', ')']).unwrap_or(rest.len());
+    let end = rest.find(['.', ' ', ';', ')', '_']).unwrap_or(rest.len());
     rest[..end].parse().ok()
 }
 
@@ -2206,6 +2238,58 @@ mod tests {
         assert_eq!(headless.browser, UserAgentBrowser::Chrome);
         assert_eq!(headless.chromium_major_version, Some(134));
         assert_eq!(headless.inferred_profile, Some(StealthProfile::ChromeLinux));
+    }
+
+    #[test]
+    fn user_agent_facts_no_silent_fallback_on_unsupported_platforms() {
+        // Firefox on Android must NOT silently fall back to FirefoxLinux
+        let ff_android = user_agent_facts(
+            "Mozilla/5.0 (Android 14; Mobile; rv:126.0) Gecko/126.0 Firefox/126.0",
+        );
+        assert_eq!(ff_android.browser, UserAgentBrowser::Firefox);
+        assert_eq!(ff_android.platform, UserAgentPlatform::Android);
+        assert_eq!(ff_android.inferred_profile, None);
+
+        // Firefox on iOS (FxiOS) must NOT silently fall back to FirefoxLinux
+        let ff_ios = user_agent_facts(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/126.0 Mobile/15E148 Safari/605.1.15",
+        );
+        assert_eq!(ff_ios.browser, UserAgentBrowser::Firefox);
+        assert_eq!(ff_ios.platform, UserAgentPlatform::Ios);
+        assert_eq!(ff_ios.browser_major_version, Some(126));
+        assert_eq!(ff_ios.inferred_profile, None);
+
+        // Safari on Windows must NOT silently fall back to SafariMacStable
+        let safari_win = user_agent_facts(
+            "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/534.57.2 (KHTML, like Gecko) Version/5.1.7 Safari/534.57.2",
+        );
+        assert_eq!(safari_win.browser, UserAgentBrowser::Safari);
+        assert_eq!(safari_win.platform, UserAgentPlatform::Windows);
+        assert_eq!(safari_win.inferred_profile, None);
+
+        // Edge on Mac must NOT silently fall back to EdgeWindowsStable
+        let edge_mac = user_agent_facts(
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+        );
+        assert_eq!(edge_mac.browser, UserAgentBrowser::Edge);
+        assert_eq!(edge_mac.platform, UserAgentPlatform::MacOs);
+        assert_eq!(edge_mac.inferred_profile, None);
+
+        // Opera on Android must NOT silently fall back to OperaWindows
+        let opera_android = user_agent_facts(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 OPR/80.0.0.0",
+        );
+        assert_eq!(opera_android.browser, UserAgentBrowser::Opera);
+        assert_eq!(opera_android.platform, UserAgentPlatform::Android);
+        assert_eq!(opera_android.inferred_profile, None);
+
+        // iPod touch with CPU iPhone OS must be classified as Ios, not MacOs
+        let ipod = user_agent_facts(
+            "Mozilla/5.0 (iPod touch; CPU iPhone OS 14_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1",
+        );
+        assert_eq!(ipod.browser, UserAgentBrowser::Safari);
+        assert_eq!(ipod.platform, UserAgentPlatform::Ios);
+        assert_eq!(ipod.inferred_profile, Some(StealthProfile::SafariIphone));
     }
 
     #[test]
