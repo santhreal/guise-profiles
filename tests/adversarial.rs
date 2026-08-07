@@ -5,9 +5,9 @@
 //! fail-closed and panic-free behavior across all public interfaces.
 
 use guise_profiles::{
-    canonical_navigation_header_name, infer_initial_ttl, named_profile, os_network_coherence,
-    os_network_options_match, profile_os_network_stack, user_agent_facts, ALL_PROFILES,
-    NetworkOsCoherence, UserAgentBrowser, UserAgentPlatform,
+    canonical_navigation_header_name, get_profile, infer_initial_ttl, named_profile,
+    os_network_coherence, os_network_options_match, profile_os_network_stack, user_agent_facts,
+    ALL_PROFILES, NetworkOsCoherence, StealthProfile, UserAgentBrowser, UserAgentPlatform,
 };
 
 #[test]
@@ -128,4 +128,47 @@ fn canonical_navigation_header_name_normalizes_casing() {
 
     // Passthrough for unknown header names
     assert_eq!(canonical_navigation_header_name("x-custom-header"), "x-custom-header");
+}
+#[test]
+fn user_agent_version_parsing_handles_non_digit_delimiters() {
+    // Hyphenated version suffix: Chrome/96-legacy must parse major version 96 and infer legacy profile
+    let legacy_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96-legacy Safari/537.36";
+    let facts = user_agent_facts(legacy_ua);
+    assert_eq!(facts.browser_major_version, Some(96));
+    assert_eq!(facts.inferred_profile, Some(StealthProfile::ChromeWindowsLegacy96));
+
+    // Hyphenated build tag on Firefox: Firefox/133-esr
+    let firefox_ua = "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133-esr";
+    let facts = user_agent_facts(firefox_ua);
+    assert_eq!(facts.browser_major_version, Some(133));
+    assert_eq!(facts.inferred_profile, Some(StealthProfile::FirefoxLinux));
+
+    // Slash-separated version tag: Chrome/131/mobile
+    let slash_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131/mobile Safari/537.36";
+    let facts = user_agent_facts(slash_ua);
+    assert_eq!(facts.browser_major_version, Some(131));
+    assert_eq!(facts.inferred_profile, Some(StealthProfile::ChromeWindowsStable));
+}
+
+#[test]
+fn get_profile_normalizes_casing_and_whitespace() {
+    let chrome = get_profile("CHROME ").expect("CHROME with trailing space should resolve");
+    assert_eq!(chrome.name, "chrome");
+
+    let firefox = get_profile(" Firefox\t").expect("Firefox with leading whitespace should resolve");
+    assert_eq!(firefox.name, "firefox");
+
+    let safari = get_profile("sAfaRi").expect("sAfaRi mixed-case should resolve");
+    assert_eq!(safari.name, "safari");
+
+    let edge = get_profile("EDGE\n").expect("EDGE with newline should resolve");
+    assert_eq!(edge.name, "edge");
+}
+
+#[test]
+fn ja4t_handles_whitespace_around_options() {
+    let mut stack = profile_os_network_stack(ALL_PROFILES[0]);
+    stack.tcp_options_layout = "mss, sok, ts, nop, ws";
+    let ja4t = stack.ja4t().expect("whitespace around option tokens should be trimmed");
+    assert!(ja4t.contains("_2-4-8-1-3_"));
 }

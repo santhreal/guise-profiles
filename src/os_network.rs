@@ -136,11 +136,12 @@ impl OsNetworkStack {
         let window = self.window_field();
         let mut kinds = Vec::new();
         for option in self.tcp_options_layout.split(',') {
-            match tcp_option_kind(option) {
+            let token = option.trim();
+            match tcp_option_kind(token) {
                 Some(kind) => kinds.push(kind.to_string()),
                 None => {
                     return Err(Ja4tError {
-                        unknown_option: option.to_string(),
+                        unknown_option: token.to_string(),
                     })
                 }
             }

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-08-07
+
+### Fixed
+- Fixed version number parsing in `major_after` to stop at any non-digit delimiter (e.g. `-`, `/`, `,`), preventing silent profile inference fallbacks to default profiles for versions with build/channel suffixes (e.g. `Chrome/96-legacy`).
+- Fixed `get_profile` to normalize whitespace and ASCII casing on config profile names, resolving silent lookup failures for names like `"CHROME"` or `" chrome "`.
+- Fixed `OsNetworkStack::ja4t` to trim whitespace around TCP option layout tokens, eliminating unnecessary JA4T rendering failures on layouts with spaces after commas.
+
 
 ## [0.1.3] - 2026-08-07
 

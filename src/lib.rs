@@ -533,10 +533,9 @@ fn first_major_after(user_agent: &str, tokens: &[&str]) -> Option<u32> {
         .iter()
         .find_map(|token| major_after(user_agent, token))
 }
-
 fn major_after(user_agent: &str, token: &str) -> Option<u32> {
     let rest = user_agent.split_once(token)?.1;
-    let end = rest.find(['.', ' ', ';', ')', '_']).unwrap_or(rest.len());
+    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
     rest[..end].parse().ok()
 }
 
@@ -800,7 +799,8 @@ const fn browser_profile(name: &'static str, profile: StealthProfile) -> HeaderP
 /// Resolve a common browser HTTP profile by its stable config name.
 #[must_use]
 pub fn get_profile(name: &str) -> Option<&'static HeaderProfile> {
-    PROFILES.iter().find(|profile| profile.name == name)
+    let normalized = name.trim().to_ascii_lowercase();
+    PROFILES.iter().find(|profile| profile.name == normalized)
 }
 
 /// Deterministically rotate through common browser HTTP profiles.
