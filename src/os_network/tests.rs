@@ -464,3 +464,18 @@ fn p0f_and_ja4t_render_the_same_window_token() {
         assert_eq!(ja4t_window, expected_window, "{profile:?} ja4t window");
     }
 }
+#[test]
+fn os_network_options_match_normalizes_whitespace() {
+    assert!(os_network_options_match(
+        StealthProfile::ChromeWindowsStable,
+        "mss, nop, ws, nop, nop, sok"
+    ));
+    assert!(os_network_options_match(
+        StealthProfile::FirefoxLinux,
+        " mss , sok , ts , nop , ws "
+    ));
+    assert!(!os_network_options_match(
+        StealthProfile::ChromeWindowsStable,
+        "mss, sok, ts, nop, ws"
+    ));
+}

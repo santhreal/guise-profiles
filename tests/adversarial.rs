@@ -172,3 +172,36 @@ fn ja4t_handles_whitespace_around_options() {
     let ja4t = stack.ja4t().expect("whitespace around option tokens should be trimmed");
     assert!(ja4t.contains("_2-4-8-1-3_"));
 }
+#[test]
+fn get_profile_resolves_all_aliases_and_names() {
+    assert!(get_profile("chrome-windows").is_some());
+    assert!(get_profile("chrome-macos").is_some());
+    assert!(get_profile("firefox-windows").is_some());
+    assert!(get_profile("firefox-macos").is_some());
+    assert!(get_profile("chrome-android").is_some());
+    assert!(get_profile("safari-iphone").is_some());
+    assert!(get_profile("safari-ipad").is_some());
+    assert!(get_profile("brave").is_some());
+    assert!(get_profile("opera").is_some());
+    assert!(get_profile("samsung-internet").is_some());
+}
+
+#[test]
+fn user_agent_inference_refuses_unknown_platform_across_all_browsers() {
+    let uas = [
+        "Mozilla/5.0 (CustomOS) Edg/131.0.0.0",
+        "Mozilla/5.0 (UnknownOS) OPR/116.0.0.0",
+        "Mozilla/5.0 (UnknownOS) SamsungBrowser/26.0",
+        "Mozilla/5.0 (UnknownOS) Trident/7.0",
+        "Mozilla/5.0 (UnknownOS) Chrome/131.0.0.0",
+        "Mozilla/5.0 (UnknownOS) Firefox/150.0",
+        "Mozilla/5.0 (UnknownOS) Version/17.5 Safari/605.1.15",
+    ];
+    for ua in uas {
+        let facts = user_agent_facts(ua);
+        assert_eq!(
+            facts.inferred_profile, None,
+            "UA {ua:?} with unknown platform must not infer a profile"
+        );
+    }
+}

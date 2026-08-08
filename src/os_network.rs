@@ -432,7 +432,13 @@ pub const fn os_network_coherence(profile: StealthProfile, observed_ttl: u8) -> 
 /// order (`olayout`) differs by OS family and is harder to normalize than TTL.
 #[must_use]
 pub fn os_network_options_match(profile: StealthProfile, observed_olayout: &str) -> bool {
-    profile_os_network_stack(profile).tcp_options_layout == observed_olayout
+    let expected = profile_os_network_stack(profile).tcp_options_layout;
+    if expected == observed_olayout {
+        return true;
+    }
+    let exp_tokens = expected.split(',').map(str::trim);
+    let obs_tokens = observed_olayout.split(',').map(str::trim);
+    exp_tokens.eq(obs_tokens)
 }
 
 #[cfg(test)]

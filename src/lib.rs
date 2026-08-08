@@ -377,22 +377,27 @@ pub fn user_agent_facts(user_agent: &str) -> UserAgentFacts {
             "HeadlessChromium/",
             "Chrome/",
             "Chromium/",
+            "CriOS/",
         ],
     );
     let browser_major_version = match browser {
         UserAgentBrowser::Chrome => chromium_major_version,
-        UserAgentBrowser::Edge => major_after(user_agent, "Edg/"),
+        UserAgentBrowser::Edge => {
+            first_major_after(user_agent, &["Edg/", "EdgA/", "EdgiOS/"])
+        }
         UserAgentBrowser::Firefox => {
-            major_after(user_agent, "Firefox/").or_else(|| major_after(user_agent, "FxiOS/"))
+            first_major_after(user_agent, &["Firefox/", "FxiOS/"])
         }
         UserAgentBrowser::Safari => major_after(user_agent, "Version/"),
         UserAgentBrowser::InternetExplorer => {
-            major_after(user_agent, "MSIE ").or_else(|| major_after(user_agent, "rv:"))
+            first_major_after(user_agent, &["MSIE ", "rv:"])
         }
-        UserAgentBrowser::Opera => major_after(user_agent, "OPR/"),
+        UserAgentBrowser::Opera => {
+            first_major_after(user_agent, &["OPR/", "OPiOS/", "OPT/"])
+        }
         UserAgentBrowser::SamsungInternet => major_after(user_agent, "SamsungBrowser/"),
         UserAgentBrowser::Unknown => None,
-    };
+        };
 
     UserAgentFacts {
         browser,
@@ -419,11 +424,17 @@ pub fn infer_profile_from_user_agent(user_agent: &str) -> Option<StealthProfile>
 fn user_agent_browser(user_agent: &str) -> UserAgentBrowser {
     if user_agent.contains("Trident/") || user_agent.contains("MSIE ") {
         UserAgentBrowser::InternetExplorer
-    } else if user_agent.contains("Edg/") {
+    } else if user_agent.contains("Edg/")
+        || user_agent.contains("EdgA/")
+        || user_agent.contains("EdgiOS/")
+    {
         UserAgentBrowser::Edge
     } else if user_agent.contains("SamsungBrowser/") {
         UserAgentBrowser::SamsungInternet
-    } else if user_agent.contains("OPR/") {
+    } else if user_agent.contains("OPR/")
+        || user_agent.contains("OPiOS/")
+        || user_agent.contains("OPT/")
+    {
         UserAgentBrowser::Opera
     } else if user_agent.contains("Firefox/") || user_agent.contains("FxiOS/") {
         UserAgentBrowser::Firefox
@@ -431,6 +442,7 @@ fn user_agent_browser(user_agent: &str) -> UserAgentBrowser {
         || user_agent.contains("HeadlessChromium/")
         || user_agent.contains("Chrome/")
         || user_agent.contains("Chromium/")
+        || user_agent.contains("CriOS/")
     {
         UserAgentBrowser::Chrome
     } else if user_agent.contains("Safari/") && user_agent.contains("Version/") {
@@ -469,24 +481,18 @@ fn profile_from_user_agent_facts(
 ) -> Option<StealthProfile> {
     match browser {
         UserAgentBrowser::InternetExplorer => match platform {
-            UserAgentPlatform::Windows | UserAgentPlatform::Unknown => {
-                Some(StealthProfile::Ie11Windows)
-            }
+            UserAgentPlatform::Windows => Some(StealthProfile::Ie11Windows),
             _ => None,
         },
         UserAgentBrowser::Edge => match platform {
-            UserAgentPlatform::Windows | UserAgentPlatform::Unknown => {
-                Some(StealthProfile::EdgeWindowsStable)
-            }
+            UserAgentPlatform::Windows => Some(StealthProfile::EdgeWindowsStable),
             _ => None,
         },
         UserAgentBrowser::Firefox => match platform {
             UserAgentPlatform::Windows => Some(StealthProfile::FirefoxWindows),
             UserAgentPlatform::MacOs => Some(StealthProfile::FirefoxMacStable),
             UserAgentPlatform::Linux => Some(StealthProfile::FirefoxLinux),
-            UserAgentPlatform::Android | UserAgentPlatform::Ios | UserAgentPlatform::Unknown => {
-                None
-            }
+            _ => None,
         },
         UserAgentBrowser::Safari => {
             if user_agent.contains("iPhone") || user_agent.contains("iPod") {
@@ -500,15 +506,11 @@ fn profile_from_user_agent_facts(
             }
         }
         UserAgentBrowser::SamsungInternet => match platform {
-            UserAgentPlatform::Android | UserAgentPlatform::Unknown => {
-                Some(StealthProfile::SamsungInternetAndroid)
-            }
+            UserAgentPlatform::Android => Some(StealthProfile::SamsungInternetAndroid),
             _ => None,
         },
         UserAgentBrowser::Opera => match platform {
-            UserAgentPlatform::Windows | UserAgentPlatform::Unknown => {
-                Some(StealthProfile::OperaWindows)
-            }
+            UserAgentPlatform::Windows => Some(StealthProfile::OperaWindows),
             _ => None,
         },
         UserAgentBrowser::Chrome => match platform {
@@ -522,7 +524,7 @@ fn profile_from_user_agent_facts(
                     Some(StealthProfile::ChromeWindowsStable)
                 }
             }
-            UserAgentPlatform::Ios | UserAgentPlatform::Unknown => None,
+            _ => None,
         },
         UserAgentBrowser::Unknown => None,
     }
@@ -773,12 +775,27 @@ impl HeaderProfile {
 }
 
 /// Common browser HTTP profiles used by scanner transports.
-pub static PROFILES: &[HeaderProfile] = &[
+const ALL_HEADER_PROFILES: &[HeaderProfile] = &[
     browser_profile("chrome", StealthProfile::ChromeWindowsStable),
-    browser_profile("firefox", StealthProfile::FirefoxLinux),
-    browser_profile("safari", StealthProfile::SafariMacStable),
+    browser_profile("chrome-windows-legacy-96", StealthProfile::ChromeWindowsLegacy96),
+    browser_profile("chrome-macos", StealthProfile::ChromeMacStable),
     browser_profile("edge", StealthProfile::EdgeWindowsStable),
+    browser_profile("ie11-windows", StealthProfile::Ie11Windows),
+    browser_profile("firefox", StealthProfile::FirefoxLinux),
+    browser_profile("firefox-windows", StealthProfile::FirefoxWindows),
+    browser_profile("firefox-macos", StealthProfile::FirefoxMacStable),
+    browser_profile("chrome-android", StealthProfile::ChromeAndroid),
+    browser_profile("safari-iphone", StealthProfile::SafariIphone),
+    browser_profile("safari-ipad", StealthProfile::SafariIpad),
+    browser_profile("safari", StealthProfile::SafariMacStable),
+    browser_profile("chrome-linux", StealthProfile::ChromeLinux),
+    browser_profile("brave", StealthProfile::BraveWindows),
+    browser_profile("opera", StealthProfile::OperaWindows),
+    browser_profile("samsung-internet", StealthProfile::SamsungInternetAndroid),
 ];
+
+/// Common browser HTTP profiles used by scanner transports.
+pub static PROFILES: &[HeaderProfile] = ALL_HEADER_PROFILES;
 
 const DEFAULT_PROFILE: HeaderProfile = browser_profile("default", DEFAULT_STEALTH_PROFILE);
 
@@ -799,8 +816,9 @@ const fn browser_profile(name: &'static str, profile: StealthProfile) -> HeaderP
 /// Resolve a common browser HTTP profile by its stable config name.
 #[must_use]
 pub fn get_profile(name: &str) -> Option<&'static HeaderProfile> {
-    let normalized = name.trim().to_ascii_lowercase();
-    PROFILES.iter().find(|profile| profile.name == normalized)
+    let profile = named_profile(name)?;
+    let index = ALL_PROFILES.iter().position(|&p| p == profile)?;
+    Some(&ALL_HEADER_PROFILES[index])
 }
 
 /// Deterministically rotate through common browser HTTP profiles.
@@ -2864,5 +2882,68 @@ mod tests {
             canonical_navigation_header_name("x-custom-header"),
             "x-custom-header"
         );
+    }
+    #[test]
+    fn unknown_platform_user_agent_never_infers_a_profile() {
+        // Unknown platform must fail profile inference (return None) for ALL browser families.
+        let edge_unknown = user_agent_facts("Mozilla/5.0 (CustomOS) Edg/131.0.0.0");
+        assert_eq!(edge_unknown.platform, UserAgentPlatform::Unknown);
+        assert_eq!(edge_unknown.inferred_profile, None);
+
+        let ie_unknown = user_agent_facts("Trident/7.0; rv:11.0");
+        assert_eq!(ie_unknown.platform, UserAgentPlatform::Unknown);
+        assert_eq!(ie_unknown.inferred_profile, None);
+
+        let opera_unknown = user_agent_facts("OPR/116.0.0.0");
+        assert_eq!(opera_unknown.platform, UserAgentPlatform::Unknown);
+        assert_eq!(opera_unknown.inferred_profile, None);
+
+        let samsung_unknown = user_agent_facts("SamsungBrowser/26.0");
+        assert_eq!(samsung_unknown.platform, UserAgentPlatform::Unknown);
+        assert_eq!(samsung_unknown.inferred_profile, None);
+    }
+
+    #[test]
+    fn user_agent_facts_parses_mobile_and_variant_tokens_correctly() {
+        // Edge on Android (EdgA/)
+        let edga = user_agent_facts("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 EdgA/131.0.0.0");
+        assert_eq!(edga.browser, UserAgentBrowser::Edge);
+        assert_eq!(edga.platform, UserAgentPlatform::Android);
+        assert_eq!(edga.browser_major_version, Some(131));
+
+        // Edge on iOS (EdgiOS/)
+        let edgios = user_agent_facts("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) EdgiOS/131.0.0.0");
+        assert_eq!(edgios.browser, UserAgentBrowser::Edge);
+        assert_eq!(edgios.platform, UserAgentPlatform::Ios);
+        assert_eq!(edgios.browser_major_version, Some(131));
+
+        // Chrome on iOS (CriOS/)
+        let crios = user_agent_facts("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) CriOS/131.0.0.0");
+        assert_eq!(crios.browser, UserAgentBrowser::Chrome);
+        assert_eq!(crios.platform, UserAgentPlatform::Ios);
+        assert_eq!(crios.browser_major_version, Some(131));
+
+        // Opera on iOS (OPiOS/)
+        let opios = user_agent_facts("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) OPiOS/116.0.0.0");
+        assert_eq!(opios.browser, UserAgentBrowser::Opera);
+        assert_eq!(opios.platform, UserAgentPlatform::Ios);
+        assert_eq!(opios.browser_major_version, Some(116));
+    }
+
+    #[test]
+    fn get_profile_resolves_all_catalog_profiles_and_aliases() {
+        for profile in ALL_PROFILES {
+            let name = profile_name(*profile);
+            let hp = get_profile(name).unwrap_or_else(|| panic!("get_profile failed for {name}"));
+            assert_eq!(hp.user_agent, profile_user_agent(*profile));
+        }
+
+        assert!(get_profile("chrome-windows").is_some());
+        assert!(get_profile("chrome-macos").is_some());
+        assert!(get_profile("firefox-windows").is_some());
+        assert!(get_profile("brave").is_some());
+        assert!(get_profile("opera").is_some());
+        assert!(get_profile("samsung-internet").is_some());
+        assert_eq!(get_profile("unknown_invalid_profile"), None);
     }
 }
